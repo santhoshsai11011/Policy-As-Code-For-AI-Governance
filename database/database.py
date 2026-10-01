@@ -97,8 +97,6 @@ def initialize_database():
 
     finally:
         conn.close()
-
-
 # ============================================================
 # SAVE RUN
 # ============================================================
@@ -295,7 +293,9 @@ def get_runs():
                     total_records,
                     pass_count,
                     flag_count,
-                    block_count
+                    block_count,
+                    policy_pdf_path,
+                    policy_excel_path
                 FROM runs
                 ORDER BY run_number DESC
             """)
@@ -341,7 +341,9 @@ def get_run(run_id):
                     total_records,
                     pass_count,
                     flag_count,
-                    block_count
+                    block_count,
+                    policy_pdf_path,
+                    policy_excel_path
                 FROM runs
                 WHERE id = %s
             """, (run_id,))
@@ -459,7 +461,40 @@ def get_run(run_id):
     finally:
         conn.close()
 
+# ============================================================
+# UPDATE RUN ARTIFACT PATHS
+# ============================================================
 
+def update_run_artifact_paths(
+    run_id,
+    policy_pdf_path,
+    policy_excel_path,
+):
+    conn = get_connection()
+
+    try:
+        with conn.cursor() as cursor:
+
+            cursor.execute("""
+                UPDATE runs
+                SET
+                    policy_pdf_path = %s,
+                    policy_excel_path = %s
+                WHERE id = %s
+            """, (
+                policy_pdf_path,
+                policy_excel_path,
+                run_id,
+            ))
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()     
 # ============================================================
 # DIRECT TEST
 # ============================================================
@@ -471,3 +506,27 @@ if __name__ == "__main__":
     print("=" * 60)
     print("SUPABASE POSTGRESQL DATABASE INITIALIZED")
     print("=" * 60)
+
+# ============================================================
+# CREATE SIGNED DOWNLOAD URL
+# ============================================================
+
+def create_run_artifact_url(
+    storage_path,
+    expires_in=300,
+):
+    """
+    Create a temporary signed URL for a private run artifact.
+    """
+
+    response = (
+        supabase.storage
+        .from_(BUCKET_NAME)
+        .create_signed_url(
+            storage_path,
+            expires_in,
+            {"download": True},
+        )
+    )
+
+    return response["signedURL"]

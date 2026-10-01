@@ -35,30 +35,61 @@ const REMEDIATION_BY_COLUMN = {
   ip_address: "Remove or mask the IP address.",
 };
 
-const RULE_COLUMNS = {
-  "PII-01": ["customer_name"],
-  "PII-02": ["email"],
-  "PII-03": ["phone"],
-  "PII-04": ["address"],
-  "PII-05": ["ni_number"],
-  "PII-06": ["passport_number"],
-  "PII-07": [],
-  "PII-08": ["bank_account", "credit_card_number"],
-  "PII-09": ["ip_address"],
-  "SPII-01": ["medical_condition"],
-  "SPII-02": ["ethnicity"],
-  "SPII-03": ["religion"],
-  "SPII-04": ["political_view"],
-  "SPII-05": [],
-  "SPII-06": [],
-  "CPII-01": ["customer_name", "dob"],
-  "CPII-02": ["customer_name", "address"],
-  "CPII-03": ["customer_name", "phone"],
-  "CPII-04": ["customer_name", "email"],
-  "CPII-05": ["dob", "gender"],
-  "CPII-06": ["employee_id", "department", "job_role"],
-  "CPII-07": ["customer_id"],
-  "CPII-08": [],
+
+const getRuleColumns = (rule) => {
+  if (!rule || typeof rule !== "object") {
+    return [];
+  }
+
+  const directColumns = Array.isArray(rule.columns)
+    ? rule.columns
+        .map((column) => String(column || "").trim())
+        .filter(Boolean)
+    : [];
+
+  if (directColumns.length > 0) {
+    return [...new Set(directColumns)];
+  }
+
+  const discoveredColumns = [];
+
+  const collectConditionColumns = (condition) => {
+    if (!condition || typeof condition !== "object") {
+      return;
+    }
+
+    const fields = Array.isArray(condition.fields)
+      ? condition.fields
+      : [];
+
+    fields.forEach((field) => {
+      if (!field || typeof field !== "object") {
+        return;
+      }
+
+      const column = String(
+        field.column || ""
+      ).trim();
+
+      if (column) {
+        discoveredColumns.push(column);
+      }
+
+      collectConditionColumns(
+        field.condition
+      );
+    });
+  };
+
+  collectConditionColumns(
+    rule.condition
+  );
+
+  return [
+    ...new Set(
+      discoveredColumns
+    ),
+  ];
 };
 
 const normalizeRuleId = (ruleId, category = "") => {
@@ -299,45 +330,38 @@ const handleUpload = async () => {
   );
 };
 
-const handleDownloadPolicyResultsExcel = () => {
+const handleDownloadPolicyText = () => {
   window.open(
-    `${API_BASE}/download-policy-results-excel`,
+    `${API_BASE}/download-policy-text`,
     "_blank"
   );
 };
 
-const handleDownloadPolicyPdf = async () => {
-  try {
-    const response = await fetch(`${API_BASE}/download-policy-pdf`);
-
-    if (!response.ok) {
-      throw new Error("Failed to download the policy PDF.");
-    }
-
-    const blob = await response.blob();
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = downloadUrl;
-    link.download = currentRun?.policy_name || "current_policy.pdf";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-
-    window.URL.revokeObjectURL(downloadUrl);
-  } catch (error) {
-    console.error("Policy PDF download error:", error);
-    alert(error.message || "Failed to download the policy PDF.");
+const handleDownloadPolicyPdf = () => {
+  if (!currentRun?.id) {
+    alert("No evaluation run selected.");
+    return;
   }
-};
 
-
-const handleDownloadPolicyTextExcel = () => {
   window.open(
-    `${API_BASE}/download-policy-text-excel`,
+    `${API_BASE}/api/runs/${currentRun.id}/policy-pdf`,
     "_blank"
   );
 };
+
+
+const handleDownloadPolicyResultsExcel = () => {
+  if (!currentRun?.id) {
+    alert("No evaluation run selected.");
+    return;
+  }
+
+  window.open(
+    `${API_BASE}/api/runs/${currentRun.id}/policy-excel`,
+    "_blank"
+  );
+};
+
 
 const handleDownloadRulesExcel = () => {
   window.open(
@@ -779,13 +803,13 @@ const handleDownloadDashboardSummaryExcel = () => {
       downloadLabel: "Download Excel",
       download: handleDownloadSyntheticData,
     },
-    {
+  {
       key: "ingestion",
       number: 2,
       title: "PDF Ingestion & Text Extraction",
       description: "Read the uploaded policy PDF page by page and extract text.",
-      downloadLabel: "Download Excel",
-      download: handleDownloadPolicyTextExcel,
+      downloadLabel: "Download TXT",
+  download: handleDownloadPolicyText,
     },
     {
       key: "rules",
@@ -801,7 +825,7 @@ const handleDownloadDashboardSummaryExcel = () => {
       title: "Rego Policy Generation",
       description: "Convert the validated rules into the executable Rego policy.",
       downloadLabel: "Download Excel",
-      download: handleDownloadPolicyResultsExcel,
+      download: handleDownloadResultsExcel,
     },
     {
       key: "opa",
@@ -809,7 +833,7 @@ const handleDownloadDashboardSummaryExcel = () => {
       title: "OPA Evaluation",
       description: "Evaluate all synthetic records against the generated policy.",
       downloadLabel: "Download Excel",
-      download: handleDownloadResultsExcel,
+      download: handleDownloadResultsExcel
     },
     {
       key: "dashboard",
@@ -1014,7 +1038,7 @@ const handleDownloadDashboardSummaryExcel = () => {
               </h3>
 
               <p>
-                Follow each processing stage and download its Excel output.
+                Follow each processing stage and download its output.
               </p>
 
             </div>
@@ -1998,6 +2022,24 @@ const handleDownloadDashboardSummaryExcel = () => {
                               {rule.category}
                             </div>
 
+                            {(() => {
+                              const columns =
+                                getRuleColumns(rule);
+
+                              if (columns.length === 0) {
+                                return null;
+                              }
+
+                              return (
+                                <div className="rule-category">
+                                  Fields:{" "}
+                                  {columns
+                                    .map(formatFieldName)
+                                    .join(", ")}
+                                </div>
+                              );
+                            })()}
+
                           </div>
 
                         )
@@ -2152,77 +2194,89 @@ const handleDownloadDashboardSummaryExcel = () => {
                   {selectedRecord.triggered_rules &&
                   selectedRecord.triggered_rules.length > 0 ? (
 
-                    (() => {
-                      const remediationItems = [];
-                      const seenColumns = new Set();
+                    <div className="remediation-list">
 
-                      selectedRecord.triggered_rules.forEach((rule) => {
-                        const ruleId = normalizeRuleId(
-                          rule.rule_id,
-                          rule.category
-                        );
-                        const columns = RULE_COLUMNS[ruleId] || [];
+                      {(() => {
+                        const remediationItems = [];
+                        const seenColumns = new Set();
 
-                        columns.forEach((column) => {
-                          const value = selectedRecord.input?.[column];
+                        selectedRecord.triggered_rules.forEach((rule) => {
+                          const columns = getRuleColumns(rule);
 
-                          if (
-                            value === undefined ||
-                            value === null ||
-                            String(value).trim() === "" ||
-                            !REMEDIATION_BY_COLUMN[column] ||
-                            seenColumns.has(column)
-                          ) {
-                            return;
-                          }
+                          columns.forEach((column) => {
+                            const normalizedColumn = String(
+                              column || ""
+                            ).trim();
 
-                          seenColumns.add(column);
-                          remediationItems.push({
-                            column,
-                            text: REMEDIATION_BY_COLUMN[column],
+                            const value =
+                              selectedRecord.input?.[normalizedColumn];
+
+                            if (
+                              !normalizedColumn ||
+                              value === undefined ||
+                              value === null ||
+                              String(value).trim() === "" ||
+                              !REMEDIATION_BY_COLUMN[normalizedColumn] ||
+                              seenColumns.has(normalizedColumn)
+                            ) {
+                              return;
+                            }
+
+                            seenColumns.add(normalizedColumn);
+
+                            remediationItems.push({
+                              column: normalizedColumn,
+                              remediation:
+                                REMEDIATION_BY_COLUMN[normalizedColumn],
+                            });
                           });
                         });
-                      });
 
-                      if (remediationItems.length === 0) {
-                        return (
-                          <div className="remediation-item">
-                            <span>→</span>
-                            <span>No column-specific remediation is required.</span>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="remediation-list">
-                          {remediationItems.map((item) => (
-                            <div
-                              className="remediation-item"
-                              key={item.column}
-                            >
+                        if (remediationItems.length === 0) {
+                          return (
+                            <div className="remediation-item">
                               <span>→</span>
                               <span>
-                                <strong>
-                                  {formatFieldName(item.column)}:
-                                </strong>{" "}
-                                {item.text}
+                                No remediation required.
                               </span>
                             </div>
-                          ))}
-                        </div>
-                      );
-                    })()
+                          );
+                        }
+
+                        return remediationItems.map((item, index) => (
+                          <div
+                            className="remediation-item"
+                            key={`${item.column}-${index}`}
+                          >
+                            <span>→</span>
+
+                            <span>
+                              <strong>
+                                {formatFieldName(item.column)}:
+                              </strong>{" "}
+                              {item.remediation}
+                            </span>
+                          </div>
+                        ));
+                      })()}
+
+                    </div>
 
                   ) : (
 
                     <div className="remediation-item">
+
                       <span>→</span>
-                      <span>No remediation required.</span>
+
+                      <span>
+                        No remediation required.
+                      </span>
+
                     </div>
 
                   )}
 
-                   </section>
+                </section>
 
               </div>
 

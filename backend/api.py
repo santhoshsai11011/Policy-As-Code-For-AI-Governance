@@ -8,8 +8,18 @@ from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from database.database import initialize_database, save_run, get_runs, get_run
+from fastapi.responses import FileResponse, RedirectResponse
+from database.database import (
+    initialize_database,
+    save_run,
+    get_runs,
+    get_run,
+    update_run_artifact_paths,
+)
+from backend.storage import (
+    upload_run_artifacts,
+    create_run_artifact_url,
+)
 from backend.extraction.extractor import extract_rules
 
 from synthetic_data.synthetic_data_generator import (
@@ -114,8 +124,7 @@ EXTRACTED_TEXT_DIR.mkdir(exist_ok=True)
 # --------------------------------------------------
 
 CURRENT_POLICY_PATH = POLICIES_DIR / "current_policy.pdf"
-CURRENT_TEXT_PATH = EXTRACTED_TEXT_DIR / "current_policy.json"
-POLICY_TEXT_EXCEL_PATH = EXTRACTED_TEXT_DIR / "policy_text.xlsx"
+POLICY_TEXT_TXT_PATH = EXTRACTED_TEXT_DIR / "policy.txt"
 CURRENT_RULES_PATH = EXTRACTED_TEXT_DIR / "rules.json"
 
 RESULTS_DIR = BASE_DIR / "evaluation_results"
@@ -219,8 +228,7 @@ def delete_previous_policy():
 
     files_to_delete = [
         CURRENT_POLICY_PATH,
-        CURRENT_TEXT_PATH,
-        POLICY_TEXT_EXCEL_PATH,
+        POLICY_TEXT_TXT_PATH,
         CURRENT_RULES_PATH,
     ]
 
@@ -296,87 +304,32 @@ def process_policy_upload(
 
         document.close()
 
-        extracted_text_result = {
-            "success": True,
-            "filename": original_filename,
-            "page_count": len(pages),
-            "pages": pages
-        }
+        policy_text = "\n\n".join(
+            page["text"]
+            for page in pages
+        )
 
         with open(
-            CURRENT_TEXT_PATH,
+            POLICY_TEXT_TXT_PATH,
             "w",
             encoding="utf-8"
-        ) as json_file:
+        ) as text_file:
 
-            json.dump(
-                extracted_text_result,
-                json_file,
-                indent=2,
-                ensure_ascii=False
+            text_file.write(
+                policy_text
             )
 
         print()
         print(
-            f"Extracted text saved to: "
-            f"{CURRENT_TEXT_PATH}"
-        )
-
-        policy_text_dataframe = pd.DataFrame(
-            pages,
-            columns=["page_number", "text"],
-        )
-
-        with pd.ExcelWriter(
-            POLICY_TEXT_EXCEL_PATH,
-            engine="openpyxl",
-        ) as writer:
-
-            policy_text_dataframe.to_excel(
-                writer,
-                sheet_name="Policy Text",
-                index=False,
-            )
-
-            worksheet = writer.sheets["Policy Text"]
-            worksheet.freeze_panes = "A2"
-            worksheet.column_dimensions["A"].width = 15
-            worksheet.column_dimensions["B"].width = 100
-
-            for cell in worksheet[1]:
-                cell.font = cell.font.copy(bold=True)
-                cell.alignment = cell.alignment.copy(
-                    horizontal="center",
-                    vertical="center",
-                    wrap_text=True,
-                )
-
-            for row in worksheet.iter_rows(min_row=2):
-                for cell in row:
-                    cell.alignment = cell.alignment.copy(
-                        vertical="top",
-                        wrap_text=True,
-                    )
-
-        print(
-            f"Policy text Excel saved to: "
-            f"{POLICY_TEXT_EXCEL_PATH}"
+            f"Policy text saved to: "
+            f"{POLICY_TEXT_TXT_PATH}"
         )
 
         update_policy_job(
             job_id,
             current_step="PDF Ingestion",
             progress=15,
-            message="PDF text extraction and Excel export completed.",
-        )
-
-        # --------------------------------------------------
-        # COMBINE POLICY TEXT
-        # --------------------------------------------------
-
-        policy_text = "\n\n".join(
-            page["text"]
-            for page in pages
+            message="PDF text extraction completed.",
         )
 
         print()
@@ -597,6 +550,22 @@ def process_policy_upload(
         )
 
         # --------------------------------------------------
+        # STORE POLICY ARTIFACTS FOR THIS RUN
+        # --------------------------------------------------
+
+        artifact_paths = upload_run_artifacts(
+            run_id=run_id,
+            policy_pdf_path=CURRENT_POLICY_PATH,
+            policy_excel_path=policy_results_excel_path,
+        )
+
+        update_run_artifact_paths(
+            run_id=run_id,
+            policy_pdf_path=artifact_paths["policy_pdf_path"],
+            policy_excel_path=artifact_paths["policy_excel_path"],
+        )
+
+        # --------------------------------------------------
         # DASHBOARD SUMMARY EXCEL
         # --------------------------------------------------
 
@@ -720,7 +689,7 @@ def process_policy_upload(
                 CURRENT_POLICY_PATH
             ),
             "extracted_text_file": str(
-                CURRENT_TEXT_PATH
+                POLICY_TEXT_TXT_PATH
             ),
             "rules_file": str(
                 CURRENT_RULES_PATH
@@ -921,6 +890,65 @@ def api_get_run(run_id: int):
 
     return run
 
+@app.get("/api/runs/{run_id}/policy-pdf")
+def download_run_policy_pdf(run_id: int):
+
+    run = get_run(run_id)
+
+    if run is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Evaluation run not found."
+        )
+
+    storage_path = run.get(
+        "policy_pdf_path"
+    )
+
+    if not storage_path:
+        raise HTTPException(
+            status_code=404,
+            detail="Policy PDF is not available for this run."
+        )
+
+    signed_url = create_run_artifact_url(
+        storage_path
+    )
+
+    return RedirectResponse(
+        url=signed_url
+    )
+
+
+@app.get("/api/runs/{run_id}/policy-excel")
+def download_run_policy_excel(run_id: int):
+
+    run = get_run(run_id)
+
+    if run is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Evaluation run not found."
+        )
+
+    storage_path = run.get(
+        "policy_excel_path"
+    )
+
+    if not storage_path:
+        raise HTTPException(
+            status_code=404,
+            detail="Policy Excel is not available for this run."
+        )
+
+    signed_url = create_run_artifact_url(
+        storage_path
+    )
+
+    return RedirectResponse(
+        url=signed_url
+    )
+
 @app.get("/download-synthetic-data")
 def download_synthetic_data():
     file_path = BASE_DIR / "synthetic_data" / "synthetic_dataset.xlsx"
@@ -961,27 +989,24 @@ def download_results_excel():
         ),
     )
     
-@app.get("/download-policy-text-excel")
-def download_policy_text_excel():
-    policy_text_excel_path = (
+@app.get("/download-policy-text")
+def download_policy_text():
+    policy_text_path = (
         BASE_DIR
         / "extracted_text"
-        / "policy_text.xlsx"
+        / "policy.txt"
     )
 
-    if not policy_text_excel_path.exists():
+    if not policy_text_path.exists():
         raise HTTPException(
             status_code=404,
-            detail="Policy text Excel file not found."
+            detail="Policy text file not found."
         )
 
     return FileResponse(
-        path=policy_text_excel_path,
-        filename="policy_text.xlsx",
-        media_type=(
-            "application/vnd.openxmlformats-officedocument."
-            "spreadsheetml.sheet"
-        ),
+        path=policy_text_path,
+        filename="policy.txt",
+        media_type="text/plain",
     )
 
 
