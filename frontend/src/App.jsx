@@ -377,6 +377,13 @@ const handleDownloadResultsExcel = () => {
   );
 };
 
+const handleDownloadRegoExcel = () => {
+  window.open(
+    `${API_BASE}/download-policy-results-excel`,
+    "_blank"
+  );
+};
+
 const handleDownloadDashboardSummaryExcel = () => {
   window.open(
     `${API_BASE}/download-dashboard-summary-excel`,
@@ -825,7 +832,7 @@ const handleDownloadDashboardSummaryExcel = () => {
       title: "Rego Policy Generation",
       description: "Convert the validated rules into the executable Rego policy.",
       downloadLabel: "Download Excel",
-      download: handleDownloadResultsExcel,
+      download: handleDownloadRegoExcel,
     },
     {
       key: "opa",
