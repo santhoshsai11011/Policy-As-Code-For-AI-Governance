@@ -138,7 +138,14 @@ def save_rules_excel(result: dict):
     """
     Save the complete LLM-generated rules JSON
     into a properly formatted Excel workbook.
+
+    The workbook contains:
+    1. Rules     - extracted policy rules
+    2. Metadata  - creation date/time information
     """
+
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
     RULES_EXCEL_PATH.parent.mkdir(
         parents=True,
@@ -165,10 +172,38 @@ def save_rules_excel(result: dict):
 
     dataframe = pd.DataFrame(rows)
 
+    # ========================================================
+    # CREATION TIMESTAMP
+    # ========================================================
+
+    created_at = datetime.now(
+        ZoneInfo("Asia/Kolkata")
+    )
+
+    created_date = created_at.strftime(
+        "%d-%m-%Y"
+    )
+
+    created_time = created_at.strftime(
+        "%I:%M:%S %p"
+    )
+
+    created_datetime = created_at.strftime(
+        "%d-%m-%Y %I:%M:%S %p"
+    )
+
+    # ========================================================
+    # CREATE EXCEL WORKBOOK
+    # ========================================================
+
     with pd.ExcelWriter(
         RULES_EXCEL_PATH,
         engine="openpyxl",
     ) as writer:
+
+        # ----------------------------------------------------
+        # RULES SHEET
+        # ----------------------------------------------------
 
         dataframe.to_excel(
             writer,
@@ -211,6 +246,7 @@ def save_rules_excel(result: dict):
             cell.font = cell.font.copy(
                 bold=True
             )
+
             cell.alignment = cell.alignment.copy(
                 horizontal="center",
                 vertical="center",
@@ -235,6 +271,67 @@ def save_rules_excel(result: dict):
         # ----------------------------------------------------
 
         worksheet.row_dimensions[1].height = 25
+
+        # ====================================================
+        # METADATA SHEET
+        # ====================================================
+
+        metadata = pd.DataFrame({
+            "Property": [
+                "Created Date",
+                "Created Time",
+                "Created Date & Time",
+                "Timezone",
+            ],
+            "Value": [
+                created_date,
+                created_time,
+                created_datetime,
+                "Asia/Kolkata (IST)",
+            ],
+        })
+
+        metadata.to_excel(
+            writer,
+            sheet_name="Metadata",
+            index=False,
+        )
+
+        metadata_worksheet = writer.sheets[
+            "Metadata"
+        ]
+
+        # ----------------------------------------------------
+        # Metadata formatting
+        # ----------------------------------------------------
+
+        metadata_worksheet.column_dimensions[
+            "A"
+        ].width = 25
+
+        metadata_worksheet.column_dimensions[
+            "B"
+        ].width = 35
+
+        for cell in metadata_worksheet[1]:
+            cell.font = cell.font.copy(
+                bold=True
+            )
+
+            cell.alignment = cell.alignment.copy(
+                horizontal="center",
+                vertical="center",
+            )
+
+        for row in metadata_worksheet.iter_rows(
+            min_row=2
+        ):
+            for cell in row:
+                cell.alignment = cell.alignment.copy(
+                    vertical="center",
+                )
+
+        metadata_worksheet.freeze_panes = "A2"
 
     print(
         f"Formatted rules Excel saved to: "

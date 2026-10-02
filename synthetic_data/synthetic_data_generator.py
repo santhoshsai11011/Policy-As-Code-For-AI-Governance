@@ -602,30 +602,62 @@ def generate_dataset():
 
 def save_dataset(dataframe):
 
-    dataframe.to_excel(
-        OUTPUT_FILE,
-        index=False
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    created_at = datetime.now(
+        ZoneInfo("Asia/Kolkata")
     )
+
+    created_date = created_at.strftime("%d-%m-%Y")
+    created_time = created_at.strftime("%I:%M:%S %p")
+    created_datetime = created_at.strftime(
+        "%d-%m-%Y %I:%M:%S %p"
+    )
+
+    with pd.ExcelWriter(
+        OUTPUT_FILE,
+        engine="openpyxl"
+    ) as writer:
+
+        # Main synthetic dataset
+        dataframe.to_excel(
+            writer,
+            sheet_name="Synthetic Data",
+            index=False
+        )
+
+        # Metadata sheet
+        metadata = pd.DataFrame({
+            "Property": [
+                "Created Date",
+                "Created Time",
+                "Created Date & Time",
+                "Timezone"
+            ],
+            "Value": [
+                created_date,
+                created_time,
+                created_datetime,
+                "Asia/Kolkata (IST)"
+            ]
+        })
+
+        metadata.to_excel(
+            writer,
+            sheet_name="Metadata",
+            index=False
+        )
 
     print()
     print("=" * 70)
     print("DATASET GENERATED SUCCESSFULLY")
     print("=" * 70)
 
-    print(
-        f"Rows    : "
-        f"{len(dataframe)}"
-    )
-
-    print(
-        f"Columns : "
-        f"{len(dataframe.columns)}"
-    )
-
-    print(
-        f"Output  : "
-        f"{OUTPUT_FILE}"
-    )
+    print(f"Rows    : {len(dataframe)}")
+    print(f"Columns : {len(dataframe.columns)}")
+    print(f"Output  : {OUTPUT_FILE}")
+    print(f"Created : {created_datetime} IST")
 
     print("=" * 70)
 

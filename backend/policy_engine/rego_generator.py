@@ -505,8 +505,15 @@ def save_rego(rego_policy: str):
 def save_policy_results_excel(rules: list[dict]):
     """
     Save the policy rule IDs and their outcomes
-    into a simple two-column Excel workbook.
+    into an Excel workbook.
+
+    Sheets:
+    1. Policy Results
+    2. Metadata
     """
+
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
 
     REGO_DIR.mkdir(
         parents=True,
@@ -530,10 +537,38 @@ def save_policy_results_excel(rules: list[dict]):
         ],
     )
 
+    # ========================================================
+    # CREATION TIMESTAMP
+    # ========================================================
+
+    created_at = datetime.now(
+        ZoneInfo("Asia/Kolkata")
+    )
+
+    created_date = created_at.strftime(
+        "%d-%m-%Y"
+    )
+
+    created_time = created_at.strftime(
+        "%I:%M:%S %p"
+    )
+
+    created_datetime = created_at.strftime(
+        "%d-%m-%Y %I:%M:%S %p"
+    )
+
+    # ========================================================
+    # CREATE EXCEL WORKBOOK
+    # ========================================================
+
     with pd.ExcelWriter(
         POLICY_RESULTS_EXCEL_PATH,
         engine="openpyxl",
     ) as writer:
+
+        # ----------------------------------------------------
+        # POLICY RESULTS SHEET
+        # ----------------------------------------------------
 
         dataframe.to_excel(
             writer,
@@ -579,6 +614,58 @@ def save_policy_results_excel(rules: list[dict]):
                 )
 
         worksheet.freeze_panes = "A2"
+
+        # ====================================================
+        # METADATA SHEET
+        # ====================================================
+
+        metadata = pd.DataFrame({
+            "Property": [
+                "Created Date",
+                "Created Time",
+                "Created Date & Time",
+                "Timezone",
+            ],
+            "Value": [
+                created_date,
+                created_time,
+                created_datetime,
+                "Asia/Kolkata (IST)",
+            ],
+        })
+
+        metadata.to_excel(
+            writer,
+            sheet_name="Metadata",
+            index=False,
+        )
+
+        metadata_worksheet = writer.sheets[
+            "Metadata"
+        ]
+
+        # Metadata column widths
+        metadata_worksheet.column_dimensions[
+            "A"
+        ].width = 25
+
+        metadata_worksheet.column_dimensions[
+            "B"
+        ].width = 35
+
+        # Metadata header formatting
+        for cell in metadata_worksheet[1]:
+
+            cell.font = cell.font.copy(
+                bold=True
+            )
+
+            cell.alignment = cell.alignment.copy(
+                horizontal="center",
+                vertical="center",
+            )
+
+        metadata_worksheet.freeze_panes = "A2"
 
     print(
         f"Policy results Excel saved to: "

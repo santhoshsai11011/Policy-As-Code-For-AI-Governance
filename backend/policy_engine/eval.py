@@ -404,6 +404,11 @@ def save_results_excel(results, summary):
     Save the complete synthetic dataset together with four clean
     OPA-evaluation columns in one Excel sheet.
 
+    Sheets:
+        1. OPA Evaluation
+        2. Summary
+        3. Metadata
+
     The four additional columns are:
         1. Outcome
         2. Triggered Rules
@@ -411,9 +416,32 @@ def save_results_excel(results, summary):
         4. Suggested Remediation
     """
 
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
     RESULTS_DIR.mkdir(
         parents=True,
         exist_ok=True,
+    )
+
+    # ---------------------------------------------------------
+    # Creation timestamp
+    # ---------------------------------------------------------
+
+    created_at = datetime.now(
+        ZoneInfo("Asia/Kolkata")
+    )
+
+    created_date = created_at.strftime(
+        "%d-%m-%Y"
+    )
+
+    created_time = created_at.strftime(
+        "%I:%M:%S %p"
+    )
+
+    created_datetime = created_at.strftime(
+        "%d-%m-%Y %I:%M:%S %p"
     )
 
     # ---------------------------------------------------------
@@ -450,8 +478,15 @@ def save_results_excel(results, summary):
 
     for result in results:
 
-        input_record = result.get("input", {})
-        triggered_rules = result.get("triggered_rules", []) or []
+        input_record = result.get(
+            "input",
+            {}
+        )
+
+        triggered_rules = result.get(
+            "triggered_rules",
+            []
+        ) or []
 
         rule_ids = []
         explanations = []
@@ -461,14 +496,20 @@ def save_results_excel(results, summary):
         for rule in triggered_rules:
 
             rule_id = str(
-                rule.get("rule_id", "")
+                rule.get(
+                    "rule_id",
+                    ""
+                )
             ).strip()
 
             if rule_id:
                 rule_ids.append(rule_id)
 
             explanation = str(
-                rule.get("explanation", "")
+                rule.get(
+                    "explanation",
+                    ""
+                )
             ).strip()
 
             if explanation:
@@ -480,7 +521,7 @@ def save_results_excel(results, summary):
 
             columns = rule.get(
                 "columns",
-                [],
+                []
             )
 
             if not isinstance(columns, list):
@@ -494,7 +535,12 @@ def save_results_excel(results, summary):
                     not column
                     or column not in input_record
                     or column not in remediation_by_column
-                    or str(input_record.get(column, "")).strip() == ""
+                    or str(
+                        input_record.get(
+                            column,
+                            ""
+                        )
+                    ).strip() == ""
                 ):
                     continue
 
@@ -502,6 +548,7 @@ def save_results_excel(results, summary):
                     continue
 
                 seen_remediations.add(column)
+
                 remediation_items.append(
                     remediation_by_column[column]
                 )
@@ -512,7 +559,7 @@ def save_results_excel(results, summary):
         for column in EXPECTED_COLUMNS:
             row[column] = input_record.get(
                 column,
-                "",
+                ""
             )
 
         # -----------------------------------------------------
@@ -521,7 +568,7 @@ def save_results_excel(results, summary):
 
         row["Outcome"] = result.get(
             "outcome",
-            "",
+            ""
         )
 
         row["Triggered Rules"] = (
@@ -572,6 +619,25 @@ def save_results_excel(results, summary):
     )
 
     # ---------------------------------------------------------
+    # METADATA SHEET
+    # ---------------------------------------------------------
+
+    metadata_dataframe = pd.DataFrame({
+        "Property": [
+            "Created Date",
+            "Created Time",
+            "Created Date & Time",
+            "Timezone",
+        ],
+        "Value": [
+            created_date,
+            created_time,
+            created_datetime,
+            "Asia/Kolkata (IST)",
+        ],
+    })
+
+    # ---------------------------------------------------------
     # WRITE WORKBOOK
     # ---------------------------------------------------------
 
@@ -589,6 +655,12 @@ def save_results_excel(results, summary):
         summary_dataframe.to_excel(
             writer,
             sheet_name="Summary",
+            index=False,
+        )
+
+        metadata_dataframe.to_excel(
+            writer,
+            sheet_name="Metadata",
             index=False,
         )
 
@@ -657,45 +729,61 @@ def save_results_excel(results, summary):
         result_columns,
         start=1,
     ):
-        letter = get_column_letter(column_index)
+
+        letter = get_column_letter(
+            column_index
+        )
 
         if column in {
             "Outcome",
         }:
             width = 14
+
         elif column in {
             "Triggered Rules",
         }:
             width = 28
+
         elif column in {
             "Explanation",
             "Suggested Remediation",
         }:
             width = 55
+
         elif column == "record_id":
             width = 12
+
         elif column == "feedback":
             width = 45
+
         else:
             width = 22
 
-        worksheet.column_dimensions[letter].width = width
+        worksheet.column_dimensions[
+            letter
+        ].width = width
 
     for cell in worksheet[1]:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = header_alignment
 
-    for row in worksheet.iter_rows(min_row=2):
+    for row in worksheet.iter_rows(
+        min_row=2
+    ):
 
         for cell in row:
             cell.alignment = body_alignment
             cell.border = thin_border
 
-        outcome_cell = row[len(EXPECTED_COLUMNS)]
+        outcome_cell = row[
+            len(EXPECTED_COLUMNS)
+        ]
 
         outcome_fill = outcome_fills.get(
-            str(outcome_cell.value).upper()
+            str(
+                outcome_cell.value
+            ).upper()
         )
 
         if outcome_fill:
@@ -712,18 +800,61 @@ def save_results_excel(results, summary):
     worksheet.freeze_panes = "A2"
     worksheet.auto_filter.ref = worksheet.dimensions
 
-    worksheet.column_dimensions["A"].width = 24
-    worksheet.column_dimensions["B"].width = 22
+    worksheet.column_dimensions[
+        "A"
+    ].width = 24
+
+    worksheet.column_dimensions[
+        "B"
+    ].width = 22
 
     for cell in worksheet[1]:
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = header_alignment
 
-    for row in worksheet.iter_rows(min_row=2):
+    for row in worksheet.iter_rows(
+        min_row=2
+    ):
+
         for cell in row:
             cell.alignment = body_alignment
             cell.border = thin_border
+
+    # ---------------------------------------------------------
+    # METADATA SHEET
+    # ---------------------------------------------------------
+
+    worksheet = workbook["Metadata"]
+
+    worksheet.freeze_panes = "A2"
+
+    worksheet.column_dimensions[
+        "A"
+    ].width = 25
+
+    worksheet.column_dimensions[
+        "B"
+    ].width = 35
+
+    for cell in worksheet[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_alignment
+
+    for row in worksheet.iter_rows(
+        min_row=2
+    ):
+
+        for cell in row:
+            cell.alignment = body_alignment
+            cell.border = thin_border
+
+    worksheet.row_dimensions[1].height = 25
+
+    # ---------------------------------------------------------
+    # SAVE WORKBOOK
+    # ---------------------------------------------------------
 
     workbook.save(
         RESULTS_EXCEL_PATH
@@ -733,103 +864,6 @@ def save_results_excel(results, summary):
         f"Clean OPA evaluation Excel saved to: "
         f"{RESULTS_EXCEL_PATH}"
     )
-
-def main():
-
-    print("=" * 60)
-    print("POLICY-AS-CODE DATASET EVALUATOR")
-    print("=" * 60)
-
-    # ---------------------------------------------------------
-    # Validate project files
-    # ---------------------------------------------------------
-
-    print()
-    print("Validating required files...")
-
-    validate_paths()
-
-    print(
-        "Required file validation: PASSED"
-    )
-
-    # ---------------------------------------------------------
-    # Load dataset
-    # ---------------------------------------------------------
-
-    dataframe = load_dataset()
-
-    # ---------------------------------------------------------
-    # Validate columns
-    # ---------------------------------------------------------
-
-    print()
-    print("Validating dataset columns...")
-
-    validate_dataset_columns(
-        dataframe
-    )
-
-    # ---------------------------------------------------------
-    # Evaluate records
-    # ---------------------------------------------------------
-
-    results = evaluate_dataset(
-        dataframe
-    )
-
-    # ---------------------------------------------------------
-    # Summary
-    # ---------------------------------------------------------
-
-    summary = calculate_summary(
-        results
-    )
-
-    # ---------------------------------------------------------
-    # Save
-    # ---------------------------------------------------------
-
-    save_results(
-        results,
-        summary,
-    )
-    
-    save_results_excel(
-    results,
-    summary,
-)
-    # ---------------------------------------------------------
-    # Print summary
-    # ---------------------------------------------------------
-
-    print()
-    print("=" * 60)
-    print("EVALUATION COMPLETE")
-    print("=" * 60)
-
-    print(
-        f"Total records : {summary['total_records']}"
-    )
-
-    print(
-        f"PASS          : {summary['pass']}"
-    )
-
-    print(
-        f"FLAG          : {summary['flag']}"
-    )
-
-    print(
-        f"BLOCK         : {summary['block']}"
-    )
-
-    print(
-        f"Pass rate     : {summary['pass_rate']}%"
-    )
-
-    print("=" * 60)
-
 
 if __name__ == "__main__":
     main()
