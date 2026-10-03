@@ -2,7 +2,6 @@ from pathlib import Path
 import json
 
 import pandas as pd
-import pymupdf
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,6 +19,11 @@ from backend.storage import (
     upload_run_artifacts,
     create_run_artifact_url,
 )
+
+from backend.ingestion.pdf_extractor import (
+    extract_text_from_pdf,
+)
+
 from backend.extraction.extractor import extract_rules
 
 from synthetic_data.synthetic_data_generator import (
@@ -267,62 +271,9 @@ def process_policy_upload(
             message="Reading and extracting text from the uploaded PDF.",
         )
 
-        document = pymupdf.open(
-            CURRENT_POLICY_PATH
-        )
-
-        print()
-        print("Opening PDF with PyMuPDF...")
-        print(f"Page count   : {len(document)}")
-
-        pages = []
-
-        for page_number, page in enumerate(
-            document,
-            start=1
-        ):
-
-            print()
-            print(
-                f"Extracting text from page "
-                f"{page_number}..."
-            )
-
-            text = page.get_text(
-                "text"
-            ).strip()
-
-            pages.append({
-                "page_number": page_number,
-                "text": text
-            })
-
-            print(
-                f"Characters extracted: "
-                f"{len(text)}"
-            )
-
-        document.close()
-
-        policy_text = "\n\n".join(
-            page["text"]
-            for page in pages
-        )
-
-        with open(
+        policy_text, pages = extract_text_from_pdf(
+            CURRENT_POLICY_PATH,
             POLICY_TEXT_TXT_PATH,
-            "w",
-            encoding="utf-8"
-        ) as text_file:
-
-            text_file.write(
-                policy_text
-            )
-
-        print()
-        print(
-            f"Policy text saved to: "
-            f"{POLICY_TEXT_TXT_PATH}"
         )
 
         update_policy_job(
