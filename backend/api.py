@@ -127,7 +127,13 @@ EXTRACTED_TEXT_DIR.mkdir(exist_ok=True)
 # Fixed filenames
 # --------------------------------------------------
 
+# --------------------------------------------------
+# Fixed filenames
+# --------------------------------------------------
+
 CURRENT_POLICY_PATH = POLICIES_DIR / "current_policy.pdf"
+CURRENT_POLICY_ORIGINAL_FILENAME = "current_policy.pdf"
+
 POLICY_TEXT_TXT_PATH = EXTRACTED_TEXT_DIR / "policy.txt"
 CURRENT_RULES_PATH = EXTRACTED_TEXT_DIR / "rules.json"
 
@@ -501,22 +507,6 @@ def process_policy_upload(
         )
 
         # --------------------------------------------------
-        # STORE POLICY ARTIFACTS FOR THIS RUN
-        # --------------------------------------------------
-
-        artifact_paths = upload_run_artifacts(
-            run_id=run_id,
-            policy_pdf_path=CURRENT_POLICY_PATH,
-            policy_excel_path=policy_results_excel_path,
-        )
-
-        update_run_artifact_paths(
-            run_id=run_id,
-            policy_pdf_path=artifact_paths["policy_pdf_path"],
-            policy_excel_path=artifact_paths["policy_excel_path"],
-        )
-
-        # --------------------------------------------------
         # DASHBOARD SUMMARY EXCEL
         # --------------------------------------------------
 
@@ -597,6 +587,38 @@ def process_policy_upload(
         )
 
         # --------------------------------------------------
+        # STORE ALL RUN ARTIFACTS
+        # --------------------------------------------------
+
+        run_artifacts = {
+            "policy_pdf": CURRENT_POLICY_PATH,
+            "policy_excel": policy_results_excel_path,
+            "policy_text": POLICY_TEXT_TXT_PATH,
+            "rules_json": CURRENT_RULES_PATH,
+            "rules_excel": rules_excel_path,
+            "rego": (
+                BASE_DIR
+                / "policies"
+                / "rego"
+                / "policy.rego"
+            ),
+            "results_json": RESULTS_PATH,
+            "results_excel": results_excel_path,
+            "dashboard_summary_excel": DASHBOARD_SUMMARY_EXCEL_PATH,
+        }
+
+        artifact_paths = upload_run_artifacts(
+            run_id=run_id,
+            artifacts=run_artifacts,
+            original_policy_filename=original_filename,
+        )
+
+        update_run_artifact_paths(
+            run_id=run_id,
+            artifact_paths=artifact_paths,
+        )
+
+        # --------------------------------------------------
         # COMPLETE
         # --------------------------------------------------
 
@@ -608,21 +630,27 @@ def process_policy_upload(
         print(
             f"Uploaded file : {original_filename}"
         )
+
         print(
             f"Pages         : {len(pages)}"
         )
+
         print(
             f"Rules         : {rule_count}"
         )
+
         print(
             f"PASS          : {summary['pass']}"
         )
+
         print(
             f"FLAG          : {summary['flag']}"
         )
+
         print(
             f"BLOCK         : {summary['block']}"
         )
+
         print(
             f"Pass rate     : "
             f"{summary['pass_rate']}%"
@@ -696,7 +724,6 @@ def process_policy_upload(
             },
         )
 
-
 @app.post("/upload-policy")
 async def upload_policy(
     background_tasks: BackgroundTasks,
@@ -715,6 +742,9 @@ async def upload_policy(
     print(
         f"Content type : {file.content_type}"
     )
+    
+    global CURRENT_POLICY_ORIGINAL_FILENAME
+    CURRENT_POLICY_ORIGINAL_FILENAME = file.filename
 
     # --------------------------------------------------
     # VALIDATE PDF
@@ -841,55 +871,58 @@ def api_get_run(run_id: int):
 
     return run
 
-@app.get("/api/runs/{run_id}/policy-pdf")
-def download_run_policy_pdf(run_id: int):
+@app.get("/api/runs/{run_id}/artifact/{artifact_name}")
+def download_run_artifact(
+    run_id: int,
+    artifact_name: str,
+):
 
-    run = get_run(run_id)
+    allowed_artifacts = {
+        "policy_pdf",
+        "policy_excel",
+        "policy_text",
+        "rules_json",
+        "rules_excel",
+        "rego",
+        "results_json",
+        "results_excel",
+        "dashboard_summary_excel",
+    }
+
+    if artifact_name not in allowed_artifacts:
+
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid artifact name."
+        )
+
+    run = get_run(
+        run_id
+    )
 
     if run is None:
+
         raise HTTPException(
             status_code=404,
             detail="Evaluation run not found."
         )
 
-    storage_path = run.get(
-        "policy_pdf_path"
+    artifact_paths = run.get(
+        "artifact_paths"
+    ) or {}
+
+    storage_path = artifact_paths.get(
+        artifact_name
     )
 
     if not storage_path:
+
         raise HTTPException(
             status_code=404,
-            detail="Policy PDF is not available for this run."
-        )
-
-    signed_url = create_run_artifact_url(
-        storage_path
-    )
-
-    return RedirectResponse(
-        url=signed_url
-    )
-
-
-@app.get("/api/runs/{run_id}/policy-excel")
-def download_run_policy_excel(run_id: int):
-
-    run = get_run(run_id)
-
-    if run is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Evaluation run not found."
-        )
-
-    storage_path = run.get(
-        "policy_excel_path"
-    )
-
-    if not storage_path:
-        raise HTTPException(
-            status_code=404,
-            detail="Policy Excel is not available for this run."
+            detail=(
+                f"{artifact_name} is not available "
+                "for this run."
+            )
         )
 
     signed_url = create_run_artifact_url(
@@ -1025,10 +1058,12 @@ def download_policy_pdf():
 
     return FileResponse(
         path=policy_pdf_path,
-        filename="current_policy.pdf",
+        filename=CURRENT_POLICY_ORIGINAL_FILENAME,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": 'attachment; filename="current_policy.pdf"'
+            "Content-Disposition": (
+                f'attachment; filename="{CURRENT_POLICY_ORIGINAL_FILENAME}"'
+            )
         },
     )
 

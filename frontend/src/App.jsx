@@ -172,6 +172,9 @@ const handleUpload = async () => {
       return;
     }
 
+    // A new upload starts a new evaluation.
+    setCurrentRun(null);
+
     const formData = new FormData();
     formData.append("file", file);
 
@@ -324,72 +327,97 @@ const handleUpload = async () => {
 };
 
   const handleDownloadSyntheticData = () => {
-  window.open(
-    `${API_BASE}/download-synthetic-data`,
-    "_blank"
-  );
-};
+    window.open(
+      `${API_BASE}/download-synthetic-data`,
+      "_blank"
+    );
+  };
 
-const handleDownloadPolicyText = () => {
-  window.open(
-    `${API_BASE}/download-policy-text`,
-    "_blank"
-  );
-};
+  // Upload-page workflow downloads:
+  // use the selected historical run when one is open,
+  // otherwise use the current generated files.
+  const getWorkflowArtifactUrl = (artifactName, currentEndpoint) => {
+    if (currentRun?.id) {
+      return `${API_BASE}/api/runs/${currentRun.id}/artifact/${artifactName}`;
+    }
 
-const handleDownloadPolicyPdf = () => {
-  if (!currentRun?.id) {
-    alert("No evaluation run selected.");
-    return;
-  }
+    return `${API_BASE}${currentEndpoint}`;
+  };
 
-  window.open(
-    `${API_BASE}/api/runs/${currentRun.id}/policy-pdf`,
-    "_blank"
-  );
-};
+  const handleDownloadPolicyText = () => {
+    window.open(
+      getWorkflowArtifactUrl(
+        "policy_text",
+        "/download-policy-text"
+      ),
+      "_blank"
+    );
+  };
 
+  const handleDownloadRulesExcel = () => {
+    window.open(
+      getWorkflowArtifactUrl(
+        "rules_excel",
+        "/download-rules-excel"
+      ),
+      "_blank"
+    );
+  };
 
-const handleDownloadPolicyResultsExcel = () => {
-  if (!currentRun?.id) {
-    alert("No evaluation run selected.");
-    return;
-  }
+  const handleDownloadResultsExcel = () => {
+    window.open(
+      getWorkflowArtifactUrl(
+        "results_excel",
+        "/download-results-excel"
+      ),
+      "_blank"
+    );
+  };
 
-  window.open(
-    `${API_BASE}/api/runs/${currentRun.id}/policy-excel`,
-    "_blank"
-  );
-};
+  const handleDownloadRegoExcel = () => {
+    window.open(
+      getWorkflowArtifactUrl(
+        "policy_excel",
+        "/download-policy-results-excel"
+      ),
+      "_blank"
+    );
+  };
 
+  const handleDownloadDashboardSummaryExcel = () => {
+    window.open(
+      getWorkflowArtifactUrl(
+        "dashboard_summary_excel",
+        "/download-dashboard-summary-excel"
+      ),
+      "_blank"
+    );
+  };
 
-const handleDownloadRulesExcel = () => {
-  window.open(
-    `${API_BASE}/download-rules-excel`,
-    "_blank"
-  );
-};
+  // Dashboard downloads use the selected run's stored artifacts.
+  const handleDownloadPolicyPdf = () => {
+    if (!currentRun?.id) {
+      alert("No evaluation run selected.");
+      return;
+    }
 
-const handleDownloadResultsExcel = () => {
-  window.open(
-    `${API_BASE}/download-results-excel`,
-    "_blank"
-  );
-};
+    window.open(
+      `${API_BASE}/api/runs/${currentRun.id}/artifact/policy_pdf`,
+      "_blank"
+    );
+  };
 
-const handleDownloadRegoExcel = () => {
-  window.open(
-    `${API_BASE}/download-policy-results-excel`,
-    "_blank"
-  );
-};
+  const handleDownloadPolicyResultsExcel = () => {
+    if (!currentRun?.id) {
+      alert("No evaluation run selected.");
+      return;
+    }
 
-const handleDownloadDashboardSummaryExcel = () => {
-  window.open(
-    `${API_BASE}/download-dashboard-summary-excel`,
-    "_blank"
-  );
-};
+    window.open(
+      `${API_BASE}/api/runs/${currentRun.id}/artifact/policy_excel`,
+      "_blank"
+    );
+  };
 
 
   // ==========================================
@@ -759,7 +787,13 @@ const handleDownloadDashboardSummaryExcel = () => {
 
   const getWorkflowStatus = (step) => {
     if (step === "synthetic") {
-      return syntheticDataReady ? "completed" : "pending";
+      return syntheticDataReady || currentRun?.id
+        ? "completed"
+        : "pending";
+    }
+
+    if (currentRun?.id && !isUploading) {
+      return "completed";
     }
 
     if (!isUploading && uploadProgress === 0) {

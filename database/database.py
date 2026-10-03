@@ -74,9 +74,15 @@ def initialize_database():
                     total_records INTEGER NOT NULL,
                     pass_count INTEGER NOT NULL,
                     flag_count INTEGER NOT NULL,
-                    block_count INTEGER NOT NULL
+                    block_count INTEGER NOT NULL,
+                    artifact_paths JSONB
                 )
             """)
+            
+            cursor.execute("""
+                ALTER TABLE runs
+                ADD COLUMN IF NOT EXISTS artifact_paths JSONB
+           """)
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS run_records (
@@ -294,8 +300,7 @@ def get_runs():
                     pass_count,
                     flag_count,
                     block_count,
-                    policy_pdf_path,
-                    policy_excel_path
+                    artifact_paths
                 FROM runs
                 ORDER BY run_number DESC
             """)
@@ -342,8 +347,7 @@ def get_run(run_id):
                     pass_count,
                     flag_count,
                     block_count,
-                    policy_pdf_path,
-                    policy_excel_path
+                    artifact_paths
                 FROM runs
                 WHERE id = %s
             """, (run_id,))
@@ -467,8 +471,7 @@ def get_run(run_id):
 
 def update_run_artifact_paths(
     run_id,
-    policy_pdf_path,
-    policy_excel_path,
+    artifact_paths,
 ):
     conn = get_connection()
 
@@ -478,12 +481,10 @@ def update_run_artifact_paths(
             cursor.execute("""
                 UPDATE runs
                 SET
-                    policy_pdf_path = %s,
-                    policy_excel_path = %s
+                    artifact_paths = %s
                 WHERE id = %s
             """, (
-                policy_pdf_path,
-                policy_excel_path,
+                Jsonb(artifact_paths),
                 run_id,
             ))
 
@@ -494,7 +495,7 @@ def update_run_artifact_paths(
         raise
 
     finally:
-        conn.close()     
+        conn.close()
 # ============================================================
 # DIRECT TEST
 # ============================================================

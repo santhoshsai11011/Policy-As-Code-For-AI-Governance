@@ -12,84 +12,74 @@ from backend.supabase_client import (
 
 def upload_run_artifacts(
     run_id,
-    policy_pdf_path,
-    policy_excel_path,
+    artifacts,
+    original_policy_filename=None,
 ):
     """
-    Upload the policy PDF and policy Excel for a completed run
+    Upload all artifacts for a completed run
     into the private run-artifacts Supabase Storage bucket.
     """
 
     run_folder = f"run_{run_id}"
 
-    pdf_storage_path = (
-        f"{run_folder}/policy.pdf"
-    )
-
-    excel_storage_path = (
-        f"{run_folder}/policy.xlsx"
-    )
-
-    pdf_path = Path(policy_pdf_path)
-    excel_path = Path(policy_excel_path)
-
-    if not pdf_path.exists():
-        raise FileNotFoundError(
-            f"Policy PDF not found: {pdf_path}"
-        )
-
-    if not excel_path.exists():
-        raise FileNotFoundError(
-            f"Policy Excel not found: {excel_path}"
-        )
-
-    # --------------------------------------------------------
-    # Upload Policy PDF
-    # --------------------------------------------------------
-
-    with open(
-        pdf_path,
-        "rb",
-    ) as pdf_file:
-
-        supabase.storage \
-            .from_(BUCKET_NAME) \
-            .upload(
-                path=pdf_storage_path,
-                file=pdf_file,
-                file_options={
-                    "content-type": "application/pdf",
-                    "upsert": "false",
-                },
-            )
-
-    # --------------------------------------------------------
-    # Upload Policy Excel
-    # --------------------------------------------------------
-
-    with open(
-        excel_path,
-        "rb",
-    ) as excel_file:
-
-        supabase.storage \
-            .from_(BUCKET_NAME) \
-            .upload(
-                path=excel_storage_path,
-                file=excel_file,
-                file_options={
-                    "content-type": (
-                        "application/vnd.openxmlformats-officedocument."
-                        "spreadsheetml.sheet"
-                    ),
-                    "upsert": "false",
-                },
-            )
-
-    return {
-        "policy_pdf_path": pdf_storage_path,
-        "policy_excel_path": excel_storage_path,
+    content_types = {
+        ".pdf": "application/pdf",
+        ".txt": "text/plain",
+        ".json": "application/json",
+        ".xlsx": (
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+        ".rego": "text/plain",
     }
+
+    uploaded_paths = {}
+
+    for artifact_name, local_path in artifacts.items():
+
+        path = Path(local_path)
+
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Run artifact not found: {path}"
+            )
+
+        artifact_filename = path.name
+
+        if (
+            artifact_name == "policy_pdf"
+            and original_policy_filename
+        ):
+            artifact_filename = Path(
+                original_policy_filename
+            ).name
+
+        storage_path = (
+            f"{run_folder}/{artifact_filename}"
+        )
+
+        content_type = content_types.get(
+            path.suffix.lower(),
+            "application/octet-stream",
+        )
+
+        with open(
+            path,
+            "rb",
+        ) as artifact_file:
+
+            supabase.storage                 .from_(BUCKET_NAME)                 .upload(
+                    path=storage_path,
+                    file=artifact_file,
+                    file_options={
+                        "content-type": content_type,
+                        "upsert": "false",
+                    },
+                )
+
+        uploaded_paths[artifact_name] = storage_path
+
+    return uploaded_paths
 
 
 # ============================================================
