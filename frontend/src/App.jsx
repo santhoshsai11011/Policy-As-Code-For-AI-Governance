@@ -114,8 +114,7 @@ function App() {
   // ==========================================
 
   const [page, setPage] = useState("upload");
-
-  // ==========================================
+// ==========================================
   // UPLOAD PAGE
   // ==========================================
 
@@ -524,8 +523,7 @@ const handleUpload = async () => {
     }
   };
 
-  const openHistory = async () => {
-    setShowHistory(true);
+  const loadEvaluationHistory = async () => {
     setHistoryLoading(true);
 
     try {
@@ -541,6 +539,7 @@ const handleUpload = async () => {
 
       const runList = await response.json();
       setRuns(runList);
+      return runList;
     } catch (error) {
       console.error(
         "History loading error:",
@@ -548,9 +547,20 @@ const handleUpload = async () => {
       );
 
       setDashboardError(error.message);
+      return [];
     } finally {
       setHistoryLoading(false);
     }
+  };
+
+  const openHistory = async () => {
+    setShowHistory(true);
+    await loadEvaluationHistory();
+  };
+
+  const handleSelectHistoryRun = async (runId) => {
+    setPage("dashboard");
+    await loadRun(runId);
   };
 
   // ==========================================
@@ -922,10 +932,7 @@ const handleUpload = async () => {
       <div className="upload-page">
 
         <div className="upload-card">
-
-          <h1>
-            Policy as Code
-          </h1>
+            <h1>Policy-as-Code</h1>
 
           <p className="upload-subtitle">
             Upload your policy document
@@ -1198,6 +1205,70 @@ const handleUpload = async () => {
           >
             View Evaluation Dashboard
           </button>
+
+
+          {/* EVALUATION HISTORY */}
+
+          <section className="upload-history-section">
+
+            <div className="upload-history-heading">
+              <div>
+                <h3>Evaluation History</h3>
+                <p>Open a previous policy evaluation and view its dashboard.</p>
+              </div>
+
+              <button
+                type="button"
+                className="history-refresh-button"
+                onClick={loadEvaluationHistory}
+                disabled={historyLoading}
+              >
+                {historyLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+
+            {historyLoading && runs.length === 0 ? (
+              <div className="upload-history-empty">
+                Loading evaluation history...
+              </div>
+            ) : runs.length === 0 ? (
+              <div className="upload-history-empty">
+                No previous evaluation runs found.
+              </div>
+            ) : (
+              <div className="upload-history-list">
+                {runs.map((run) => (
+                  <div
+                    className={`upload-history-row ${currentRun?.id === run.id ? "active" : ""}`}
+                    key={run.id}
+                  >
+                    <div className="upload-history-main">
+                      <div className="upload-history-run">Run #{run.run_number}</div>
+                      <div className="upload-history-policy">{run.policy_name || "Unknown policy"}</div>
+                      <div className="upload-history-date">
+                        {new Date(run.run_date).toLocaleDateString()} {new Date(run.run_date).toLocaleTimeString()} · {run.total_records} records
+                      </div>
+                    </div>
+
+                    <div className="upload-history-counts">
+                      <span className="history-pass">✓ {run.pass_count}</span>
+                      <span className="history-flag">⚠ {run.flag_count}</span>
+                      <span className="history-block">✕ {run.block_count}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="history-view-button"
+                      onClick={() => handleSelectHistoryRun(run.id)}
+                    >
+                      {currentRun?.id === run.id ? "Open Current" : "View"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+          </section>
 
 
           <p className="supported">
